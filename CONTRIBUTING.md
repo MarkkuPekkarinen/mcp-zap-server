@@ -103,6 +103,14 @@ Run the smallest meaningful set locally before opening a PR:
 - `./gradlew dockerTest` for Docker/Testcontainers changes
 - `cd docs && npm run check && npm run build` for docs-site changes
 
+CI validates pull requests targeting `main` or `dev`, pushes to `main`, and
+manual workflow runs. Snyk uses the same branch events for trusted contributions,
+plus weekly and manual runs. Docs validation runs for pull requests targeting
+`main` or `master`; Pages publishing runs for pushes or manual runs on those
+branches. Run relevant checks locally before pushing development or feature
+branches, which do not trigger CI, Snyk, or Pages on push. Updates to an open
+qualifying pull request still run its pull-request checks.
+
 The normal build excludes Docker-tagged tests. CI runs them for pull requests targeting `main`, pushes to `main` before image publication, manual workflow runs, and releases. Development and feature pushes skip them.
 
 ### Java test coverage
@@ -130,7 +138,10 @@ When Docker integration testing is appropriate, use
 report task itself does not start Docker tests. Use a clean build when comparing
 coverage baselines so earlier Docker execution data cannot inflate the result.
 
-The existing CI workflow generates and uploads coverage after its test stages.
+CI runs a clean build, any required Docker tests, coverage generation, and
+eligible Sonar analysis in one Gradle invocation so the unit suite runs once.
+Build scans are disabled for this invocation. CI attempts to upload available
+test reports even when a build or analysis fails.
 Sonar analysis runs only for trusted events with a `SONAR_TOKEN` repository
 secret; fork and Dependabot pull requests still generate local coverage artifacts.
 Missing credentials produce an explicit notice rather than a false claim that
@@ -151,6 +162,37 @@ development code as the `main` baseline or put the token in commands, tracked
 files or build scans.
 
 If you cannot run something locally, say so in the PR and explain why.
+
+### Snyk dependency checks
+
+Snyk checks source dependencies, the built container and rendered Helm manifests
+separately. Source checks retain the root Gradle build's compile, runtime, test
+and sample-extension dependency scopes. The independent extension example needs
+its own compile-classpath check after the local API publication is staged. The
+docs and Claude Desktop npm lockfiles and Go healthcheck are separate targets.
+When adding a manifest, update the configured scan targets and coverage checks.
+
+A successful scan job does not mean the project has no known vulnerabilities.
+[Snyk's test exit codes](https://docs.snyk.io/developer-tools/snyk-cli/commands/test)
+distinguish findings from execution failures. Finding-related exits preserve the
+reports and produce a warning. Execution, dependency-extraction,
+report-validation, upload and monitoring failures must fail the job. Inspect the
+uploaded Snyk diagnostics to distinguish findings from
+missing coverage before deciding what to fix.
+
+Container application coverage is checked against the executable JAR extracted
+from the image. Operating-system results, a dependency count or the embedded
+SBOM alone cannot establish that every bundled runtime library was identified.
+Treat unmatched libraries and unidentified external dependencies as coverage
+gaps; investigate their reported names and versions rather than suppressing the
+check.
+
+Result categories identify configured projects and container layers consistently
+across branches using [GitHub's SARIF categories](https://docs.github.com/en/code-security/reference/code-scanning/sarif-files/sarif-support).
+A category migration needs a matching main-branch baseline before pull-request
+comparison can be established. Historical configurations are
+not automatically deleted: verify replacement findings and coverage first, then
+handle any specifically approved retirement separately.
 
 ## Documentation Standards
 
